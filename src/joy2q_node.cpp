@@ -1,332 +1,99 @@
-/*
- * teleop_pr2
- * Copyright (c) 2009, Willow Garage, Inc.
- * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- * 
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the <ORGANIZATION> nor the names of its
- *       contributors may be used to endorse or promote products derived from
- *       this software without specific prior written permission.
- * 
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+#include "ros/ros.h"
+#include "std_msgs/String.h"
+#include "std_msgs/Float64.h"
+#include "sensor_msgs/Joy.h"
+
+#include <sstream>
+
+/**
+ * This tutorial demonstrates simple sending of messages over the ROS system.
  */
-
-//\author: Blaise Gassend
-
-#include <unistd.h>
-#include <math.h>
-#include <linux/joystick.h>
-#include <fcntl.h>
-
-#include <ros/ros.h>
-#include <sensor_msgs/Joy.h>
-#include <diagnostic_updater/diagnostic_updater.h>
-
-
-///\brief Opens, reads from and publishes joystick events
-class Joy2Quinetic
+void joyCallback(const sensor_msgs::Joy::ConstPtr& msg)
 {
-private:
-  ros::NodeHandle nh_;
-  bool open_;               
-  std::string joy_dev_;
-  double deadzone_;
-  double autorepeat_rate_;  // in Hz.  0 for no repeat.
-  double coalesce_interval_; // Defaults to 100 Hz rate limit.
-  int event_count_;
-  int pub_count_;
-  ros::Publisher pub_;
-  double lastDiagTime_;
-  
-  diagnostic_updater::Updater diagnostic_;
-  
-  ///\brief Publishes diagnostics and status
-  void diagnostics(diagnostic_updater::DiagnosticStatusWrapper& stat)
-  {
-    double now = ros::Time::now().toSec();
-    double interval = now - lastDiagTime_;
-    if (open_)
-      stat.summary(0, "OK");
-    else
-      stat.summary(2, "Joystick not open.");
-    
-    stat.add("topic", pub_.getTopic());
-    stat.add("device", joy_dev_);
-    stat.add("dead zone", deadzone_);
-    stat.add("autorepeat rate (Hz)", autorepeat_rate_);
-    stat.add("coalesce interval (s)", coalesce_interval_);
-    stat.add("recent joystick event rate (Hz)", event_count_ / interval);
-    stat.add("recent publication rate (Hz)", pub_count_ / interval);
-    stat.add("subscribers", pub_.getNumSubscribers());
-    event_count_ = 0;
-    pub_count_ = 0;
-    lastDiagTime_ = now;
-  }
-  
-public:
-  Joy2Quinetic() : nh_(), diagnostic_()
-  {}
-  
-  ///\brief Opens joystick port, reads from port and publishes while node is active
-  int main(int argc, char **argv)
-  {
-    diagnostic_.add("Joystick Driver Status Here", this, &Joy2Quinetic::diagnostics);
-    diagnostic_.setHardwareID("none");
-
-    // Parameters
-    ros::NodeHandle nh_param("~");
-    pub_ = nh_.advertise<sensor_msgs::Joy>("joy", 1);
-    nh_param.param<std::string>("dev", joy_dev_, "/dev/input/js0");
-    nh_param.param<double>("deadzone", deadzone_, 0.05);
-    nh_param.param<double>("autorepeat_rate", autorepeat_rate_, 0);
-    nh_param.param<double>("coalesce_interval", coalesce_interval_, 0.001);
-    
-    // Checks on parameters
-    if (autorepeat_rate_ > 1 / coalesce_interval_)
-      ROS_WARN("joy2q_node: autorepeat_rate (%f Hz) > 1/coalesce_interval (%f Hz) does not make sense. Timing behavior is not well defined.", autorepeat_rate_, 1/coalesce_interval_);
-    
-    if (deadzone_ >= 1)
-    {
-      ROS_WARN("joy2q_node: deadzone greater than 1 was requested. The semantics of deadzone have changed. It is now related to the range [-1:1] instead of [-32767:32767]. For now I am dividing your deadzone by 32767, but this behavior is deprecated so you need to update your launch file.");
-      deadzone_ /= 32767;
-    }
-    
-    if (deadzone_ > 0.9)
-    {
-      ROS_WARN("joy2q_node: deadzone (%f) greater than 0.9, setting it to 0.9", deadzone_);
-      deadzone_ = 0.9;
-    }
-    
-    if (deadzone_ < 0)
-    {
-      ROS_WARN("joy2q_node: deadzone_ (%f) less than 0, setting to 0.", deadzone_);
-      deadzone_ = 0;
-    }
-
-    if (autorepeat_rate_ < 0)
-    {
-      ROS_WARN("joy2q_node: autorepeat_rate (%f) less than 0, setting to 0.", autorepeat_rate_);
-      autorepeat_rate_ = 0;
-    }
-    
-    if (coalesce_interval_ < 0)
-    {
-      ROS_WARN("joy2q_node: coalesce_interval (%f) less than 0, setting to 0.", coalesce_interval_);
-      coalesce_interval_ = 0;
-    }
-    
-    // Parameter conversions
-    double autorepeat_interval = 1 / autorepeat_rate_;
-    double scale = -1. / (1. - deadzone_) / 32767.;
-    double unscaled_deadzone = 32767. * deadzone_;
-
-    js_event event;
-    struct timeval tv;
-    fd_set set;
-    int joy_fd;
-    event_count_ = 0;
-    pub_count_ = 0;
-    lastDiagTime_ = ros::Time::now().toSec();
-    
-    // Big while loop opens, publishes
-    while (nh_.ok())
-    {                                      
-      open_ = false;
-      diagnostic_.force_update();
-      bool first_fault = true;
-      while (true)
-      {
-        ros::spinOnce();
-        if (!nh_.ok())
-          goto cleanup;
-        joy_fd = open(joy_dev_.c_str(), O_RDONLY);
-        if (joy_fd != -1)
-        {
-          // There seems to be a bug in the driver or something where the
-          // initial events that are to define the initial state of the
-          // joystick are not the values of the joystick when it was opened
-          // but rather the values of the joystick when it was last closed.
-          // Opening then closing and opening again is a hack to get more
-          // accurate initial state data.
-          close(joy_fd);
-          joy_fd = open(joy_dev_.c_str(), O_RDONLY);
-        }
-        if (joy_fd != -1)
-          break;
-        if (first_fault)
-        {
-          ROS_ERROR("Couldn't open joystick %s. Will retry every second.", joy_dev_.c_str());
-          first_fault = false;
-        }
-        sleep(1.0);
-        diagnostic_.update();
-      }
-      
-      ROS_INFO("Opened joystick: %s. deadzone_: %f.", joy_dev_.c_str(), deadzone_);
-      open_ = true;
-      diagnostic_.force_update();
-      
-      bool tv_set = false;
-      bool publication_pending = false;
-      tv.tv_sec = 1;
-      tv.tv_usec = 0;
-      sensor_msgs::Joy joy_msg; // Here because we want to reset it on device close.
-      while (nh_.ok()) 
-      {
-        ros::spinOnce();
-        
-        bool publish_now = false;
-        bool publish_soon = false;
-        FD_ZERO(&set);
-        FD_SET(joy_fd, &set);
-        
-        ROS_DEBUG("Select...");
-        int select_out = select(joy_fd+1, &set, NULL, NULL, &tv);
-        ROS_DEBUG("Tick...");
-        if (select_out == -1)
-        {
-          tv.tv_sec = 0;
-          tv.tv_usec = 0;
-          ROS_INFO("Select returned negative. %i", ros::isShuttingDown());
-          continue;
-          //				break; // Joystick is probably closed. Not sure if this case is useful.
-        }
-        
-        if (FD_ISSET(joy_fd, &set))
-        {
-          if (read(joy_fd, &event, sizeof(js_event)) == -1 && errno != EAGAIN)
-            break; // Joystick is probably closed. Definitely occurs.
-          
-          ROS_INFO("Read data...event type=%d", event.type);
-          joy_msg.header.stamp = ros::Time().now();
-          event_count_++;
-          switch(event.type)
-          {
-          case JS_EVENT_BUTTON:
-          case JS_EVENT_BUTTON | JS_EVENT_INIT:
-            if(event.number >= joy_msg.buttons.size())
-            {
-              int old_size = joy_msg.buttons.size();
-              joy_msg.buttons.resize(event.number+1);
-              for(unsigned int i=old_size;i<joy_msg.buttons.size();i++)
-                joy_msg.buttons[i] = 0.0;
-            }
-            joy_msg.buttons[event.number] = (event.value ? 1 : 0);
-            // For initial events, wait a bit before sending to try to catch
-            // all the initial events.
-            if (!(event.type & JS_EVENT_INIT))
-              publish_now = true;
-            else
-              publish_soon = true;
-            break;
-          case JS_EVENT_AXIS:
-          case JS_EVENT_AXIS | JS_EVENT_INIT:
-            if(event.number >= joy_msg.axes.size())
-            {
-              int old_size = joy_msg.axes.size();
-              joy_msg.axes.resize(event.number+1);
-              for(unsigned int i=old_size;i<joy_msg.axes.size();i++)
-                joy_msg.axes[i] = 0.0;
-            }
-            if (!(event.type & JS_EVENT_INIT)) // Init event.value is wrong.
-            {
-              double val = event.value;
-              // Allows deadzone to be "smooth"
-              if (val > unscaled_deadzone)
-                val -= unscaled_deadzone;
-              else if (val < -unscaled_deadzone)
-                val += unscaled_deadzone;
-              else
-                val = 0;
-              joy_msg.axes[event.number] = val * scale;
-            }
-            // Will wait a bit before sending to try to combine events. 				
-            publish_soon = true;
-            break;
-          default:
-            ROS_WARN("joy2q_node: Unknown event type. Please file a ticket. time=%u, value=%d, type=%Xh, number=%d", event.time, event.value, event.type, event.number);
-            break;
-          }
-        }
-        else if (tv_set) // Assume that the timer has expired.
-          publish_now = true;
-        
-        if (publish_now)
-        {
-          // Assume that all the JS_EVENT_INIT messages have arrived already.
-          // This should be the case as the kernel sends them along as soon as
-          // the device opens.
-          //ROS_INFO("Publish...");
-          pub_.publish(joy_msg);
-          publish_now = false;
-          tv_set = false;
-          publication_pending = false;
-          publish_soon = false;
-          pub_count_++;
-        }
-        
-        // If an axis event occurred, start a timer to combine with other
-        // events.
-        if (!publication_pending && publish_soon)
-        {
-          tv.tv_sec = trunc(coalesce_interval_);
-          tv.tv_usec = (coalesce_interval_ - tv.tv_sec) * 1e6;
-          publication_pending = true;
-          tv_set = true;
-          ROS_INFO("Pub pending...");
-        }
-        
-        // If nothing is going on, start a timer to do autorepeat.
-        if (!tv_set && autorepeat_rate_ > 0)
-        {
-          tv.tv_sec = trunc(autorepeat_interval);
-          tv.tv_usec = (autorepeat_interval - tv.tv_sec) * 1e6; 
-          tv_set = true;
-          ROS_INFO("Autorepeat pending... %i %i", tv.tv_sec, tv.tv_usec);
-        }
-        
-        if (!tv_set)
-        {
-          tv.tv_sec = 1;
-          tv.tv_usec = 0;
-        }
-	
-        diagnostic_.update();
-      } // End of joystick open loop.
-      
-      close(joy_fd);
-      ros::spinOnce();
-      if (nh_.ok())
-        ROS_ERROR("Connection to joystick device lost unexpectedly. Will reopen.");
-    }
-    
-  cleanup:
-    ROS_INFO("joy2q_node shut down.");
-    
-    return 0;
-  }
-};
+  ROS_INFO("I heard: steering [%fd], throttle [%fd]", msg->axes[3], msg->axes[4]);
+}
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "joy2qinetic_node");
-  Joy2Quinetic j;
-  return j.main(argc, argv);
+  /**
+   * The ros::init() function needs to see argc and argv so that it can perform
+   * any ROS arguments and name remapping that were provided at the command line.
+   * For programmatic remappings you can use a different version of init() which takes
+   * remappings directly, but for most command-line programs, passing argc and argv is
+   * the easiest way to do it.  The third argument to init() is the name of the node.
+   *
+   * You must call one of the versions of ros::init() before using any other
+   * part of the ROS system.
+   */
+  ros::init(argc, argv, "talker");
+
+  /**
+   * NodeHandle is the main access point to communications with the ROS system.
+   * The first NodeHandle constructed will fully initialize this node, and the last
+   * NodeHandle destructed will close down the node.
+   */
+  ros::NodeHandle n;
+
+  /**
+   * The advertise() function is how you tell ROS that you want to
+   * publish on a given topic name. This invokes a call to the ROS
+   * master node, which keeps a registry of who is publishing and who
+   * is subscribing. After this advertise() call is made, the master
+   * node will notify anyone who is trying to subscribe to this topic name,
+   * and they will in turn negotiate a peer-to-peer connection with this
+   * node.  advertise() returns a Publisher object which allows you to
+   * publish messages on that topic through a call to publish().  Once
+   * all copies of the returned Publisher object are destroyed, the topic
+   * will be automatically unadvertised.
+   *
+   * The second parameter to advertise() is the size of the message queue
+   * used for publishing messages.  If messages are published more quickly
+   * than we can send them, the number here specifies how many messages to
+   * buffer up before throwing some away.
+   */
+  ros::Publisher _pub_EffortsTh = n.advertise<std_msgs::Float64>("/LLC/EFFORTS/Throttle", 10);
+  ros::Publisher _pub_EffortsSt = n.advertise<std_msgs::Float64>("/LLC/EFFORTS/Steering", 10);
+  ros::Subscriber _sub_joystick = n.subscribe("/joy", 10, joyCallback);
+
+  ros::Rate loop_rate(10);
+  
+  /**
+   * A count of how many messages we have sent. This is used to create
+   * a unique string for each message.
+   */
+  int count = 0;
+#ifdef ALL
+  while (ros::ok())
+  {
+    /**
+     * This is a message object. You stuff it with data, and then publish it.
+     */
+    std_msgs::Float64 msg;
+
+    float hum=0.0;
+    
+    msg.data = hum;
+
+    ROS_INFO("%fd", msg.data);
+
+    /**
+     * The publish() function is how you send messages. The parameter
+     * is the message object. The type of this object must agree with the type
+     * given as a template parameter to the advertise<>() call, as was done
+     * in the constructor above.
+     */
+    _pub_EffortsTh.publish(msg);
+    _pub_EffortsSt.publish(msg);
+
+    ros::spinOnce();
+
+    loop_rate.sleep();
+    ++count;
+  }
+#else
+  ros::spin();
+#endif
+
+
+  return 0;
 }
