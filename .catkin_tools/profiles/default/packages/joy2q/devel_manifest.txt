@@ -1,0 +1,5 @@
+.
+/home/robil/pkgs/joy2q/devel_test/.private/joy2q/share/joy2q/cmake/joy2qConfig-version.cmake /home/robil/pkgs/joy2q/devel_test/share/joy2q/cmake/joy2qConfig-version.cmake
+/home/robil/pkgs/joy2q/devel_test/.private/joy2q/share/joy2q/cmake/joy2qConfig.cmake /home/robil/pkgs/joy2q/devel_test/share/joy2q/cmake/joy2qConfig.cmake
+/home/robil/pkgs/joy2q/devel_test/.private/joy2q/lib/joy2q/joy2q_node /home/robil/pkgs/joy2q/devel_test/lib/joy2q/joy2q_node
+/home/robil/pkgs/joy2q/devel_test/.private/joy2q/lib/pkgconfig/joy2q.pc /home/robil/pkgs/joy2q/devel_test/lib/pkgconfig/joy2q.pc

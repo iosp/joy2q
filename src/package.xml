@@ -1,0 +1,33 @@
+<package>
+  <name>joy2q</name>
+  <version>1.9.10</version>
+  <license>BSD</license>
+
+  <description>
+    Translates output of joystick to input to LLI.
+    Topic /joy axes[3] ==> /LLC/EFFORTS/Steering
+    Topic /joy axes[4] ==> /LLC/EFFORTS/Throttle
+  </description>
+
+  <maintainer email="mhalla@iai.co.il">Michele Hallak-Stamler</maintainer>
+  <author>Michele Hallak-Stamler</author>
+  <author>Daniel Meltz</author>
+  
+  <buildtool_depend>catkin</buildtool_depend>
+  
+  <build_depend>roscpp</build_depend>
+  <build_depend>diagnostic_updater</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>joystick</build_depend>
+  <build_depend>joy</build_depend>
+
+  <run_depend>roscpp</run_depend>
+  <run_depend>diagnostic_updater</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>joystick</run_depend>
+  <run_depend>joy</run_depend>
+
+  <test_depend>rosbag</test_depend>
+
+
+</package>
