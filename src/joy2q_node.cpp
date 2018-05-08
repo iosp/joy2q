@@ -5,12 +5,21 @@
 
 #include <sstream>
 
+
+ros::Publisher _pub_EffortsTh;
+ros::Publisher _pub_EffortsSt;
+
 /**
  * This tutorial demonstrates simple sending of messages over the ROS system.
  */
 void joyCallback(const sensor_msgs::Joy::ConstPtr& msg)
 {
+  std_msgs::Float64 steer_msg, throt_msg;
   ROS_INFO("I heard: steering [%fd], throttle [%fd]", msg->axes[3], msg->axes[4]);
+  steer_msg.data=msg->axes[3];
+  throt_msg.data=msg->axes[4];
+  _pub_EffortsTh.publish(steer_msg);
+  _pub_EffortsSt.publish(throt_msg);
 }
 
 int main(int argc, char **argv)
@@ -25,15 +34,15 @@ int main(int argc, char **argv)
    * You must call one of the versions of ros::init() before using any other
    * part of the ROS system.
    */
-  ros::init(argc, argv, "talker");
+  ros::init(argc, argv, "joy2q_node");
 
   /**
    * NodeHandle is the main access point to communications with the ROS system.
    * The first NodeHandle constructed will fully initialize this node, and the last
    * NodeHandle destructed will close down the node.
    */
+  
   ros::NodeHandle n;
-
   /**
    * The advertise() function is how you tell ROS that you want to
    * publish on a given topic name. This invokes a call to the ROS
@@ -51,9 +60,10 @@ int main(int argc, char **argv)
    * than we can send them, the number here specifies how many messages to
    * buffer up before throwing some away.
    */
-  ros::Publisher _pub_EffortsTh = n.advertise<std_msgs::Float64>("/LLC/EFFORTS/Throttle", 10);
-  ros::Publisher _pub_EffortsSt = n.advertise<std_msgs::Float64>("/LLC/EFFORTS/Steering", 10);
   ros::Subscriber _sub_joystick = n.subscribe("/joy", 10, joyCallback);
+
+  _pub_EffortsTh = n.advertise<std_msgs::Float64>("/LLC/EFFORTS/Throttle", 10);
+  _pub_EffortsSt = n.advertise<std_msgs::Float64>("/LLC/EFFORTS/Steering", 10);
 
   ros::Rate loop_rate(10);
   
