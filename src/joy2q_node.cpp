@@ -1,4 +1,4 @@
-#include </opt/ros/kinetic/include/ros/ros.h>
+#include </opt/ros/jade/include/ros/ros.h>
 #include "std_msgs/String.h"
 #include "std_msgs/Float64.h"
 #include "sensor_msgs/Joy.h"
@@ -43,7 +43,9 @@ int main(int argc, char **argv)
 
   ros::Rate loop_rate(10);
   
+  system("rosnode kill llc_node");
   ros::spin();
+  system("rosrun llc llc_node");
 
 
 
