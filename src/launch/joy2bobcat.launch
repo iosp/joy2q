@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<launch>
+	
+	<node name="joy_node" type="joy_node" pkg="joy" output="screen"/>
+	      
+        <node name="joy2q_node" type="joy2q_node" pkg="joy2q" respawn="true" output="screen"/>
+
+</launch>
