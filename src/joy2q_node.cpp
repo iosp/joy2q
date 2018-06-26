@@ -9,15 +9,34 @@
 ros::Publisher _pub_EffortsTh;
 ros::Publisher _pub_EffortsSt;
 
+std_msgs::Float64 steerCmd, throtCmd;
+
 void joyCallback(const sensor_msgs::Joy::ConstPtr& msg)
 {
-  std_msgs::Float64 steer_msg, throt_msg;
-  ROS_INFO("I heard: steering [%fd], throttle [%fd]", msg->axes[3], msg->axes[4]);
-  steer_msg.data=msg->axes[3];
-  throt_msg.data=msg->axes[4];
-  _pub_EffortsTh.publish(steer_msg);
-  _pub_EffortsSt.publish(throt_msg);
+
+  steerCmd.data = msg->axes[4];
+  throtCmd.data = msg->axes[3];
+
+  ROS_INFO("joyCallback : I heard: steering [%fd], throttle [%fd]", steerCmd.data, throtCmd.data);
+
+
+  // std_msgs::Float64 steer_msg, throt_msg;
+  // ROS_INFO("I heard: steering [%fd], throttle [%fd]", msg->axes[3], msg->axes[4]);
+  // steer_msg.data=msg->axes[4];
+  // throt_msg.data=msg->axes[3];
+  // _pub_EffortsTh.publish(steer_msg);
+  // _pub_EffortsSt.publish(throt_msg);
 }
+
+
+void applyCmd(const ros::TimerEvent&)
+{
+  ROS_INFO("applyCmd :I heard: steering [%fd], throttle [%fd]", steerCmd.data, throtCmd.data);
+  _pub_EffortsTh.publish(steerCmd);
+  _pub_EffortsSt.publish(throtCmd);
+}
+
+
 
 int main(int argc, char **argv)
 {
@@ -41,12 +60,15 @@ int main(int argc, char **argv)
   _pub_EffortsTh = n.advertise<std_msgs::Float64>("/LLC/EFFORTS/Throttle", 10);
   _pub_EffortsSt = n.advertise<std_msgs::Float64>("/LLC/EFFORTS/Steering", 10);
 
-  ros::Rate loop_rate(10);
+  
+  ros::Timer cmd_timer = n.createTimer(ros::Duration(0.01), applyCmd);
+
+
+  //ros::Rate loop_rate(10);
   
   system("rosnode kill llc_node");
   ros::spin();
   system("rosrun llc llc_node");
-
 
 
   return 0;
